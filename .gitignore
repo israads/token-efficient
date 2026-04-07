@@ -1,0 +1,4 @@
+benchmark/test-project/
+*.db
+__pycache__/
+.env
