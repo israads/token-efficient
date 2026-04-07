@@ -338,65 +338,16 @@ with open('$DIR/screenshot.png', 'wb') as f:
     f.write(png)
 "
 
-# results template
-cat > "$DIR/../results.md" << 'EOF'
-# Benchmark Results
-
-## Session A — WITH token-efficient rules
-
-Date: ____
-Model: ____
-
-| Metric | Value |
-|--------|-------|
-| Input tokens | |
-| Output tokens | |
-| Total tokens | |
-| Cost ($) | |
-| Turns | |
-| Cache read | |
-| Cache write | |
-
-Notes:
-
-
-## Session B — WITHOUT rules (default behavior)
-
-Date: ____
-Model: ____
-
-| Metric | Value |
-|--------|-------|
-| Input tokens | |
-| Output tokens | |
-| Total tokens | |
-| Cost ($) | |
-| Turns | |
-| Cache read | |
-| Cache write | |
-
-Notes:
-
-
-## Comparison
-
-| Metric | With Rules | Without Rules | Reduction |
-|--------|-----------|--------------|-----------|
-| Input tokens | | | % |
-| Output tokens | | | % |
-| Total tokens | | | % |
-| Cost ($) | | | % |
-| Turns | | | % |
-EOF
-
 echo "✅ Test project created at $DIR/"
 echo "Files: $(find $DIR -type f | wc -l | tr -d ' ')"
 echo ""
 echo "Next steps:"
 echo "  1. cd $DIR"
-echo "  2. cp ../../CLAUDE.md . (for Session A)"
-echo "  3. claude  (run the 10 tasks)"
-echo "  4. /cost   (record results)"
-echo "  5. rm CLAUDE.md (for Session B)"
-echo "  6. claude  (run same 10 tasks)"
-echo "  7. /cost   (record results)"
+echo "  2. claude                    (Session 1: WITHOUT rules)"
+echo "  3. Run the 10 tasks from tasks.md"
+echo "  4. /cost                     (save the numbers)"
+echo "  5. /exit"
+echo "  6. cp ../CLAUDE.md .         (install the rules)"
+echo "  7. claude                    (Session 2: WITH rules)"
+echo "  8. Run the same 10 tasks"
+echo "  9. /cost                     (compare!)"

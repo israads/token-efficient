@@ -1,148 +1,253 @@
 # Token Efficient — 30 Rules to Cut AI Coding Assistant Costs
 
-Compact ruleset for `CLAUDE.md`, `.cursorrules`, or any AI coding assistant system prompt. Focused on reducing token waste without sacrificing output quality.
+30 compact rules for your `CLAUDE.md` that reduce token waste in Claude Code sessions. Works with any project.
 
-Drop `CLAUDE.md` into your project root. Claude Code loads it automatically on every session.
+## Try It Yourself — Benchmark in 10 Minutes
 
-## Why This Matters
+Run the same tasks with and without the rules. See the difference.
 
-Token distribution in a typical Claude Code session:
+### Step 1: Setup the test project
 
-| Category | % of Total Cost |
-|----------|----------------|
-| **Input (context re-sent each turn)** | ~93% |
-| Thinking (internal reasoning) | ~3% |
-| Output (visible response) | ~4% |
+```bash
+git clone https://github.com/israads/token-efficient.git
+cd token-efficient/benchmark
+./setup.sh
+cd test-project
+```
 
-Most optimization guides focus on making output shorter. That helps, but **the real savings come from controlling what enters context** — fewer file reads, parallel tool calls, subagent delegation, and proactive compaction.
+### Step 2: Run WITHOUT rules (baseline)
+
+Open Claude Code normally — no CLAUDE.md, default behavior:
+
+```bash
+claude
+```
+
+Now copy-paste these 10 prompts, one by one. These are everyday tasks you'd normally ask Claude:
+
+```
+1. What version of Node does this project use?
+2. Explain what app.py does
+3. The function divide_numbers on line 42 of app.py crashes when b is zero. Fix it.
+4. Find all TODO comments across the project
+5. Add validation to POST /users — name can't be empty, email needs an @
+6. How does the auth_required decorator in middleware.py work?
+7. Refactor db.py to use connection pooling instead of opening a new connection every query
+8. Look at screenshot.png and describe what you see
+9. Run pytest and fix whatever fails
+10. Add a GET /health endpoint that returns {"status": "ok"}
+```
+
+After the 10 tasks, type `/cost` and **screenshot the result** or copy the numbers.
+
+Then exit:
+```
+/exit
+```
+
+### Step 3: Install the rules
+
+```bash
+cp ../CLAUDE.md .
+```
+
+That's it. Claude Code reads `CLAUDE.md` automatically on startup.
+
+### Step 4: Run WITH rules
+
+Open a fresh session:
+
+```bash
+claude
+```
+
+Run the **exact same 10 prompts** from Step 2 — same wording, same order.
+
+After the 10 tasks, type `/cost` again and save the result.
+
+### Step 5: Compare
+
+You now have two sets of numbers. Fill in your results:
+
+| Metric | Without Rules | With Rules | Savings |
+|--------|:------------:|:----------:|:-------:|
+| Input tokens | | | % |
+| Output tokens | | | % |
+| Total cost ($) | | | % |
+| Turns | | | % |
+
+Expected savings based on community testing:
+- **Output tokens**: 40-65% less
+- **Input tokens**: 15-30% less (fewer turns = less context re-sent)
+- **Total cost**: 25-45% less
+
+> Share your results! Open an issue with your numbers so we can build a community benchmark.
+
+---
+
+## What Each Task Tests
+
+| # | Prompt | What you'll notice |
+|---|--------|--------------------|
+| 1 | Node version lookup | Without rules: paragraph explaining Node versioning. With rules: just "v20.11" |
+| 2 | Explain app.py | Without rules: reads entire file, writes 500-word essay. With rules: concise summary |
+| 3 | Fix divide_numbers | Without rules: rewrites whole function + explains. With rules: edits the one line |
+| 4 | Find TODOs | Without rules: searches one file at a time. With rules: single grep, parallel calls |
+| 5 | Add validation | Without rules: adds validation + error handling + tests + suggestions. With rules: just the validation |
+| 6 | Explain auth decorator | Without rules: full walkthrough + security recommendations. With rules: what it does in 2-3 lines |
+| 7 | Refactor db.py | Without rules: rewrites entire file. With rules: edits only the connection logic |
+| 8 | Read screenshot | Without rules: reads full-size image. With rules: resizes first (4x fewer tokens) |
+| 9 | Run tests + fix | Without rules: narrates each step before doing it. With rules: runs, fixes, reports |
+| 10 | Add /health endpoint | Without rules: endpoint + tests + docs + suggestions. With rules: just the endpoint |
+
+---
+
+## Install for Real Projects
+
+Once you've seen the benchmark results, use it in your actual projects:
+
+```bash
+# Option A: Per-project (recommended)
+cp CLAUDE.md /path/to/your/project/CLAUDE.md
+
+# Option B: Global (applies to every project)
+cp CLAUDE.md ~/.claude/rules/token-efficient.md
+```
+
+---
 
 ## The 30 Rules — Explained
 
 ### Core (1–7)
 
 **1. Read before writing.**
-Don't edit code you haven't seen. Blind edits break things, cause rollbacks, and multiply turns — each turn re-sends the full conversation.
+Don't edit code you haven't seen. Blind edits cause rollbacks → more turns → more tokens re-sent.
 
 **2. Think deeply, write briefly.**
-Extended thinking (internal reasoning) is cheap — it doesn't persist in context. Visible output does. Let the model think hard but respond concisely.
+Internal reasoning (thinking tokens) is cheap and doesn't persist. Visible output is expensive and stays in context forever.
 
 **3. Edit over rewrite.**
-The `Edit` tool sends only the changed lines (~50 tokens). The `Write` tool sends the entire file (~2000+ tokens). For a 3-line change in a 200-line file, that's a 40x difference.
+`Edit` sends only changed lines (~50 tokens). `Write` sends the entire file (~2000+ tokens). For a 3-line change in a 200-line file, that's 40x difference.
 
 **4. Never re-read files already in context.**
-Every file read injects its full content into the conversation. Reading the same 300-line file twice = 600 lines of duplicated context sitting there permanently.
+Reading a 300-line file twice = 600 lines permanently duplicated in your context window.
 
 **5. Verify before declaring done.**
-A failed fix triggers "it didn't work → read error → try again → test again" — 3-4 extra turns. Testing before declaring done avoids the retry spiral.
+A failed fix triggers a retry spiral: read error → try again → test again. 3-4 extra turns that each re-send the full conversation.
 
 **6. Simplest working solution.**
-More code = more tokens generated. Abstractions, helper functions, and "future-proof" patterns for single-use operations waste generation tokens and clutter context for subsequent turns.
+More code = more tokens generated + more context for every future turn.
 
 **7. User instructions override everything.**
-Safety valve. Any rule here can be broken when the user explicitly asks for it.
+Safety valve so you can break any rule when needed.
 
 ### Output (8–15)
 
 **8. No filler.**
-"Great question!", "Sure, I'd be happy to help!", "Let me know if you need anything else!" — 50-100 wasted tokens per turn. Across a 30-turn session, that's 1500-3000 tokens of pure noise.
+"Great question!", "Sure, I'd be happy to help!" — 50-100 wasted tokens per turn. Over 30 turns: 1500-3000 tokens of noise.
 
 **9. No echo.**
-"You want me to fix the authentication bug in the middleware..." before doing it. The user just said that. Repeating it costs 30-80 tokens and adds zero value.
+Repeating "You want me to fix the auth bug..." before fixing it. You just said that. 30-80 tokens wasted.
 
 **10. Act first, report after.**
-"First I'll read the config file, then I'll locate the function, then I'll update the parameters, and finally I'll run the tests." — All of this narration happens before any action. Just do it and show the result.
+"First I'll read the file, then find the function, then..." — narrating steps before taking them. Just do it.
 
 **11. Proportional responses.**
-"What Node version?" → "v20.11". Not three paragraphs about Node versioning strategy. Match response length to question complexity.
+"What Node version?" → "v20.11". Not three paragraphs.
 
 **12. No soft warnings.**
-"Note that this approach...", "Keep in mind that...", "Be aware that..." — filler phrases that pad output without actionable content. Only warn when something could genuinely break.
+"Note that...", "Keep in mind..." — skip unless something could genuinely break.
 
 **13. Stay in scope.**
-The user asked to fix a CSS bug. Don't suggest refactoring the component, adding dark mode support, and switching to Tailwind. Each unsolicited suggestion is 100-200 wasted tokens.
+You asked to fix a CSS bug. Don't suggest dark mode, Tailwind migration, and component refactoring. Each suggestion: 100-200 wasted tokens.
 
 **14. Code first, explanation after.**
-Most of the time the user can read the code. Explaining why you used a `for` loop before showing it is backwards. Show the code — explain only if the approach is non-obvious.
+Show the code. Explain only if the approach is non-obvious.
 
 **15. Plain text for short answers.**
-A markdown header + bullet list to say "yes, use v20" is structural overhead. Reserve formatting for responses where structure genuinely aids comprehension.
+A markdown header + bullet list to say "yes, use v20" is structural overhead.
 
 ### Context Management (16–21)
 
 **16. Read only what you need.**
-A 500-line file = ~2000 tokens. If you need lines 40-60, reading just those 20 lines = ~80 tokens. That's **25x less**. Use `offset` and `limit` parameters.
+500-line file = ~2000 tokens. Lines 40-60 only = ~80 tokens. **25x less.**
 
 **17. Delegate to subagents.**
-A subagent exploring 15 files consumes tokens in its own context window, not yours. It returns a summary (~200 tokens) instead of flooding your context with ~15,000 tokens of raw file content.
+Subagent explores 15 files in its own context → returns 200-token summary. Without subagent: 15,000 tokens of file content in your main window.
 
 **18. Parallelize tool calls.**
-Each turn re-sends the **entire** conversation history as input. Three tools called sequentially = 3 turns = 3x context re-sent. Three tools in parallel = 1 turn = 1x. Same work, one-third the input tokens.
+Each turn re-sends the **entire** conversation. 3 sequential tool calls = 3 turns = 3x context re-sent. 3 parallel calls = 1 turn = 1x.
 
 **19. Compact at 60%, not 90%.**
-`/compact` generates a summary that itself consumes tokens. Compacting at 90% leaves almost no room for the summary + your next message. At 60% you have headroom.
+The summary from `/compact` itself costs tokens. At 90% there's no room left.
 
 **20. Don't repeat established facts.**
-Re-explaining the project structure, re-listing files, re-describing the problem — all of this is already in the conversation history. The model can see it. Only restate after `/compact` if you suspect information was lost.
+The project structure is already in the conversation. Don't re-list it every time.
 
 **21. Assign shorthands.**
-"The authentication and authorization middleware in `src/middleware/auth/`" = 12 tokens every time you reference it. "The auth module" = 3 tokens. Define it once, reuse everywhere. Small compression, big savings across a long session.
+"The auth and authorization middleware in src/middleware/auth/" = 12 tokens per mention. "The auth module" = 3 tokens. Adds up fast.
 
 ### Tools & Files (22–25)
 
 **22. Cheapest tool first.**
-`Glob` returns file paths (~100 tokens). `Grep` returns matching lines (~200 tokens). `Agent` can consume ~10,000+ tokens exploring. Use the tool proportional to the problem — don't send a research team when you need a phone book.
+Glob (~100 tokens) → Grep (~200 tokens) → Agent (~10,000+ tokens). Match the tool to the problem.
 
 **23. CLI over MCP.**
-MCP servers inject their full tool schema into context on **both** the request and response. The GitHub MCP schema alone is ~2000 tokens. Running `gh issue view 123` via bash returns ~200 tokens of data. Same information, 10x difference.
+MCP schema injection: ~2000 tokens. Same data via CLI: ~200 tokens. 10x difference.
 
 **24. Direct paths over search.**
-If you know the file is at `src/auth/middleware.ts`, read it directly. Searching for it means: run glob → scan results → pick match → read file. That's 3-4 tool calls instead of 1, each re-sending the full context.
+If you know where the file is, read it directly. Searching = 3-4 tool calls instead of 1.
 
 **25. Show only changed lines.**
-When presenting code changes, show the modified lines plus 2-3 lines of surrounding context for orientation. Printing a 200-line file to highlight a 3-line change wastes ~800 tokens.
+Don't print a 200-line file to show a 3-line change. Show the diff + 2-3 lines of context.
 
 ### Images (26–28)
 
 **26. Always resize before reading.**
-Images are tokenized proportionally to pixel area. A 2400px screenshot = ~1600 tokens. Resized to 1200px = ~400 tokens. **4x reduction.** Also prevents the "dimension limit for multi-image requests (2000px)" error that blocks all subsequent image reads.
+2400px screenshot = ~1600 tokens. Resized to 1200px = ~400 tokens. **4x reduction.**
 
 ```bash
 sips --resampleHeightWidthMax 1200 "{path}" --out "/tmp/{filename}"
 ```
 
 **27. Describe images immediately.**
-After viewing a screenshot, write down your observations in text. Text descriptions survive `/compact` efficiently (~50 tokens). The original image stays in context at full token cost and compresses poorly. Your notes replace the need to keep the image around.
+Write text notes right after viewing. Text survives `/compact` cheaply (~50 tokens). The image stays at full cost.
 
 **28. Never re-read the same image.**
-Each read re-injects the full image encoding. Your text notes from the first viewing are 10-20x cheaper. If you need to reference the image later, read your notes instead.
+Each re-read re-injects the full encoding. Your text notes are 10-20x cheaper.
 
 ### Model & Effort (29–30)
 
 **29. Cheapest model for the task.**
-Use Sonnet/Haiku for mechanical work: running tests, formatting, renaming variables, validation checklists, generating boilerplate. Reserve Opus for tasks requiring judgment: architecture decisions, complex debugging, nuanced rewriting. Sonnet is ~5x cheaper than Opus for the same token count.
+Sonnet for mechanical work (tests, formatting, renaming). Opus for judgment (architecture, debugging). Sonnet is ~5x cheaper.
 
 **30. Lower thinking effort for simple tasks.**
-"What's the project name?" doesn't need 10,000 thinking tokens. Use `/effort low` for lookups and simple questions. Save deep reasoning for problems that actually require it.
+"What's the project name?" doesn't need deep reasoning. Use `/effort low`.
 
-## Quick Start
+---
 
-```bash
-# Copy CLAUDE.md to your project root
-cp CLAUDE.md /path/to/your/project/CLAUDE.md
+## Why Input Tokens Matter More Than Output
 
-# Or use as global rules (applies to all projects)
-cp CLAUDE.md ~/.claude/rules/token-efficient.md
+```
+┌─────────────────────────────────────────────┐
+│           Token Cost Distribution            │
+│                                              │
+│  Input (context re-sent each turn)   ~93%  █████████████████████████████████░░░
+│  Thinking (internal reasoning)        ~3%  █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+│  Output (visible response)            ~4%  █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+│                                              │
+└─────────────────────────────────────────────┘
 ```
 
-## Benchmark
+Most guides focus on making output shorter. That helps, but the **real savings come from controlling input**: fewer file reads, parallel tool calls, subagent delegation, and proactive compaction.
 
-The `benchmark/` directory contains a reproducible test to measure token savings. See [benchmark/README.md](benchmark/README.md).
+---
 
 ## Sources
 
-Compiled from research across 15+ sources:
+Compiled from 15+ sources:
 - [claude-token-efficient (drona23)](https://github.com/drona23/claude-token-efficient) — original 8-rule baseline
-- [6 Ways I Cut My Claude Token Usage in Half (Sabrina.dev)](https://www.sabrina.dev/p/6-ways-i-cut-my-claude-token-usage)
+- [6 Ways I Cut My Claude Token Usage (Sabrina.dev)](https://www.sabrina.dev/p/6-ways-i-cut-my-claude-token-usage)
 - [Optimize Context by 60% (Medium)](https://medium.com/@jpranav97/stop-wasting-tokens-how-to-optimize-claude-code-context-by-60-bfad6fd477e5)
 - [HN: Universal Claude.md Discussion](https://news.ycombinator.com/item?id=47581701)
 - [18 Token Management Hacks (MindStudio)](https://www.mindstudio.ai/blog/claude-code-token-management-hacks-3)

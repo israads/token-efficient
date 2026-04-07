@@ -1,57 +1,25 @@
 # Benchmark Tasks
 
-Run these 10 tasks in order, exactly as written. Copy-paste each prompt into Claude Code.
-
-**Important**: Use the EXACT same wording in both sessions (with and without CLAUDE.md).
+Copy-paste each prompt into Claude Code. Use the **exact same wording** in both sessions.
 
 ---
 
-### Task 1 — Simple lookup
-```
-What Node version does this project use?
-```
+**1.** `What version of Node does this project use?`
 
-### Task 2 — File comprehension
-```
-Read the file app.py and tell me what it does
-```
+**2.** `Explain what app.py does`
 
-### Task 3 — Bug fix
-```
-There's a bug on line 42 of app.py — the divide_numbers function doesn't handle division by zero. Fix it.
-```
+**3.** `The function divide_numbers on line 42 of app.py crashes when b is zero. Fix it.`
 
-### Task 4 — Codebase search
-```
-Find all TODO comments in the project and list them
-```
+**4.** `Find all TODO comments across the project`
 
-### Task 5 — Feature addition with scope control
-```
-Add input validation to the POST /users endpoint in app.py. Name must be non-empty string, email must contain @.
-```
+**5.** `Add validation to POST /users — name can't be empty, email needs an @`
 
-### Task 6 — Code explanation
-```
-What does the auth_required decorator in middleware.py do?
-```
+**6.** `How does the auth_required decorator in middleware.py work?`
 
-### Task 7 — Refactor
-```
-Refactor the database functions in db.py to use a connection pool instead of creating a new connection per query
-```
+**7.** `Refactor db.py to use connection pooling instead of opening a new connection every query`
 
-### Task 8 — Image reading
-```
-Read the screenshot at screenshot.png and tell me what you see
-```
+**8.** `Look at screenshot.png and describe what you see`
 
-### Task 9 — Test and fix
-```
-Run the tests with pytest and fix any failures
-```
+**9.** `Run pytest and fix whatever fails`
 
-### Task 10 — New feature
-```
-Create a new endpoint GET /health that returns {"status": "ok", "timestamp": current_utc_time}
-```
+**10.** `Add a GET /health endpoint that returns {"status": "ok"}`
