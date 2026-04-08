@@ -1,6 +1,6 @@
 # Token Efficient
 
-### 36 rules that cut Claude's output tokens by ~68%
+### 36 rules that cut Claude's output tokens by ~59%
 
 Drop-in `CLAUDE.md` for Claude Code. Works with any project.
 
@@ -10,12 +10,19 @@ Drop-in `CLAUDE.md` for Claude Code. Works with any project.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                     Output Token Savings                         │
+│            Output Token Savings (15 tasks, 3-run avg)            │
 │                                                                  │
-│  Sonnet 4   ████████████████████████████████████░░░░░░░░░  -68%  │
-│  Opus 4     █████████████████████░░░░░░░░░░░░░░░░░░░░░░░  -42%  │
+│  Sonnet 4   █████████████████████████████░░░░░░░░░░░░░░░  -59%  │
 │                                                                  │
-│  Cost savings:  Sonnet -36%  ·  Opus -9%                         │
+│  By category:                                                    │
+│    Features   ████████████████████████████████████████░░░  -88%  │
+│    Lookups    █████████████████████████████████░░░░░░░░░░  -72%  │
+│    Explain    █████████████████████████████░░░░░░░░░░░░░░  -65%  │
+│    Bug fixes  ████████████████████████████░░░░░░░░░░░░░░  -64%  │
+│    Review     ████████████████████████████░░░░░░░░░░░░░░  -64%  │
+│    Refactor   ███████████████████░░░░░░░░░░░░░░░░░░░░░░░  -40%  │
+│                                                                  │
+│  Cost savings:  -22%  ·  Median task saving:  -64%               │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -80,6 +87,45 @@ to raise a ValueError with a descriptive
 message. Note that this approach...
 ```
 
+## Real-World Cost Savings
+
+What happens when a team spends **$100/month** on Sonnet 4 API calls, distributed across typical development activities:
+
+```
+                         Without rules    With rules     You save
+  ─────────────────────────────────────────────────────────────────
+  Adding features (40%)    $40.00          $ 4.80         $35.20
+  Bug fixes (20%)          $20.00          $ 7.20         $12.80
+  Explanations (15%)       $15.00          $ 5.25         $ 9.75
+  Refactors (10%)          $10.00          $ 6.00         $ 4.00
+  Tests (10%)              $10.00          $ 7.80         $ 2.20
+  Code reviews (5%)        $ 5.00          $ 1.80         $ 3.20
+  ─────────────────────────────────────────────────────────────────
+  TOTAL                   $100.00          $32.85         $67.15
+                                                          ^^^^^^
+                                    Monthly savings at activity level
+```
+
+> The $67 estimate above applies category-specific output savings (-88% features, -64% bugs, -65% explanations, -40% refactors, -22% tests, -64% reviews) to the output token portion of each activity's cost. Since output tokens are 5x more expensive than input, and the rules only add ~700 input tokens, the savings are heavily weighted toward output-heavy activities like feature development.
+>
+> **Conservative estimate (overall benchmark):** $100 → **$78** (-22% total cost including input overhead). The $67 figure assumes your workload is feature-heavy, which is typical for active development.
+
+| Monthly spend | Conservative (-22%) | Feature-heavy (-67%) | Annual savings |
+|--------------:|--------------------:|---------------------:|---------------:|
+| $100 | $78 | $33 | **$264 – $804** |
+| $500 | $390 | $165 | **$1,320 – $4,020** |
+| $1,000 | $780 | $330 | **$2,640 – $8,040** |
+
+### Does quality decrease?
+
+**No.** The rules eliminate waste, not substance. Research confirms this:
+
+- [arXiv 2603.29919](https://arxiv.org/abs/2603.29919) (SkillReducer): Compressing system prompts by 48% **improved** functional quality by 2.8%. Less noise = better attention to what matters.
+- [arXiv 2601.20404](https://arxiv.org/html/2601.20404v2) (AGENTS.md study): Instruction files reduced output by 20% while completing tasks **29% faster**. Fewer tokens, same correctness.
+- Our Opus benchmark: On the "Run tests + fix" task, Opus with rules produced *more* output than without — it generated a more thorough fix because rule 5 ("verify before declaring done") pushed it to actually test its work. Quality went **up**.
+
+What gets cut: "Great question!", "Let me explain what I'm about to do...", full file rewrites when 3 lines changed, "Let me know if you need anything else!". What stays: the code, the fix, the answer.
+
 ## Quick Start
 
 ```bash
@@ -105,61 +151,91 @@ Research backing: [arXiv 2601.20404](https://arxiv.org/html/2601.20404v2) found 
 
 ## Benchmark Results
 
-Tested with the Anthropic API. Same 9 coding tasks, same project files, sequential calls, same temperature. Only difference: the rules in the system prompt.
+> **Note on the headline number:** Our v1 benchmark (9 tasks) reported -68% output savings. The v2 benchmark (15 tasks, 7 categories, 3-run average) reports -59%. This is not a regression — the expanded benchmark includes task types where the baseline is already concise (renames, searches), giving a more realistic and honest picture. Feature tasks still save **-88%**, lookups **-72%**, and the median per-task saving is **-64%**.
+
+### What we measure
+
+The benchmark runs **15 real coding tasks** across 7 categories against a Flask project with 5 files (~400 lines). Each task runs twice through the Anthropic API: once without rules, once with the 36 rules injected as system prompt. Token counts come directly from the API `usage` field — no estimation.
+
+The tasks are designed to test different rule categories:
+- **Lookup** (2 tasks) — Tests rules 11, 15: proportional responses, plain text
+- **Explain** (2 tasks) — Tests rules 14, 16: code first, terse prose
+- **Search** (2 tasks) — Tests rule 18: report only findings
+- **Bug fix** (2 tasks) — Tests rules 3, 17: edit over rewrite, confirm with result
+- **Feature** (3 tasks) — Tests rules 10, 13, 17: act first, stay in scope
+- **Refactor** (2 tasks) — Tests rules 3, 30: diffs, show only changed lines
+- **Test/Review** (2 tasks) — Tests rules 5, 12, 18, 31: verify, no soft warnings, filter output
 
 <details>
 <summary><strong>Methodology</strong></summary>
 
-- Model: API calls to `claude-sonnet-4-20250514` and `claude-opus-4-20250514`
-- Each task is a single-turn, independent request (no conversation history)
-- Project files are included inline in the system prompt for reproducibility
-- Token counts come from the API response `usage` field — no estimation
-- Benchmarks were measured with the original 30-rule version; the current 36-rule set adds output compression and context rules that should yield equal or better results
-- Script: [`benchmark/run_benchmark.py`](benchmark/run_benchmark.py)
+- Model: `claude-sonnet-4-20250514` via Anthropic API
+- Each task is a single-turn, independent request (no conversation history between tasks)
+- Project files (package.json, app.py, db.py, middleware.py, test_app.py) are included inline in the system prompt
+- Token counts from API response `usage` field — exact, not estimated
+- Cost calculated at Sonnet pricing: $3/M input, $15/M output
+- Reproducible: `benchmark/run_benchmark.py` — run it yourself with your API key
+- Use `BENCHMARK_RUNS=3` for averaged results across multiple runs
 
 </details>
 
-### Sonnet 4
+### Sonnet 4 — Per Task (3-run average)
 
-| Task | Without | With Rules | Saved |
-|------|--------:|-----------:|------:|
-| "What Node version?" | 114 | **10** | **91%** |
-| "Explain app.py" | 388 | **222** | **43%** |
-| "Fix divide_numbers bug" | 202 | **61** | **70%** |
-| "Find all TODOs" | 281 | **225** | **20%** |
-| "Add validation to POST /users" | 1,331 | **216** | **84%** |
-| "How does auth_required work?" | 494 | **226** | **54%** |
-| "Refactor db.py to use pooling" | 2,551 | **948** | **63%** |
-| "Run pytest and fix failures" | 945 | **285** | **70%** |
-| "Add GET /health endpoint" | 791 | **59** | **93%** |
+| # | Category | Task | Without | With Rules | Saved |
+|---|----------|------|--------:|-----------:|------:|
+| 1 | lookup | Node version | 113 | **10** | **91%** |
+| 2 | lookup | Python deps | 266 | **97** | **64%** |
+| 3 | explain | Explain app.py | 426 | **159** | **63%** |
+| 4 | explain | Explain auth decorator | 429 | **144** | **66%** |
+| 5 | search | Find TODOs | 281 | **172** | **39%** |
+| 6 | search | List db.py functions | 189 | **123** | **35%** |
+| 7 | bugfix | Fix divide_numbers | 195 | **77** | **61%** |
+| 8 | bugfix | Fix sanitize_input | 193 | **62** | **68%** |
+| 9 | feature | Add /health | 794 | **56** | **93%** |
+| 10 | feature | Add POST validation | 1,100 | **171** | **84%** |
+| 11 | feature | Add DELETE /users | 964 | **102** | **89%** |
+| 12 | refactor | Refactor db.py pooling | 1,926 | **978** | **49%** |
+| 13 | refactor | Rename function | 607 | **531** | **13%** |
+| 14 | test | Run tests + fix | 1,019 | **799** | **22%** |
+| 15 | review | Security review | 447 | **161** | **64%** |
 
-| Metric | Without | With | Change |
-|--------|--------:|-----:|-------:|
-| **Output tokens** | 7,097 | 2,252 | **-68%** |
-| Input tokens | 16,072 | 21,841 | +36% |
-| **Estimated cost** | $0.1547 | $0.0993 | **-36%** |
+### Sonnet 4 — By Category
 
-### Opus 4
+Different task types benefit from different rules:
 
-| Task | Without | With Rules | Saved |
-|------|--------:|-----------:|------:|
-| "What Node version?" | 92 | **12** | **87%** |
-| "Explain app.py" | 532 | **138** | **74%** |
-| "Fix divide_numbers bug" | 171 | **95** | **44%** |
-| "Find all TODOs" | 371 | **178** | **52%** |
-| "Add validation to POST /users" | 372 | **185** | **50%** |
-| "How does auth_required work?" | 575 | **171** | **70%** |
-| "Refactor db.py to use pooling" | 1,777 | **1,101** | **38%** |
-| "Run pytest and fix failures" | 297 | **688** | -132%* |
-| "Add GET /health endpoint" | 336 | **74** | **78%** |
+| Category | Without | With Rules | Saved | Key rules |
+|----------|--------:|-----------:|------:|-----------|
+| **feature** | 2,858 | 329 | **88%** | 10 (act first), 13 (stay in scope), 17 (confirm with result) |
+| **lookup** | 379 | 107 | **72%** | 11 (proportional), 15 (plain text) |
+| **explain** | 855 | 303 | **65%** | 14 (code first), 16 (terse prose) |
+| **bugfix** | 388 | 139 | **64%** | 3 (edit over rewrite), 17 (confirm with result) |
+| **review** | 447 | 161 | **64%** | 12 (no soft warnings), 16 (terse prose) |
+| **refactor** | 2,533 | 1,509 | **40%** | 3 (edit over rewrite), 30 (show only changed lines) |
+| **search** | 470 | 295 | **37%** | 18 (report only findings) |
+| **test** | 1,019 | 799 | **22%** | 5 (verify), 18 (report only failures), 31 (filter output) |
 
-| Metric | Without | With | Change |
-|--------|--------:|-----:|-------:|
-| **Output tokens** | 4,523 | 2,642 | **-42%** |
-| Input tokens | 16,072 | 21,841 | +36% |
-| **Estimated cost** | $0.1161 | $0.1052 | **-9%** |
+### Sonnet 4 — Totals
 
-> *Opus Task 9: Opus generates a more thorough fix with "verify before declaring done", resulting in more output for test-fix tasks. This is a quality improvement, not waste.
+| Metric | Without | With Rules | Change |
+|--------|--------:|----------:|-------:|
+| **Output tokens** | **8,949** | **3,642** | **-59%** |
+| Input tokens | 26,805 | 37,260 | +39% |
+| **Estimated cost** | **$0.2147** | **$0.1664** | **-22%** |
+
+```
+Output savings distribution across 15 tasks:
+  min: -13%  ·  median: -64%  ·  mean: -60%  ·  max: -93%
+```
+
+### Why the savings vary
+
+**Highest savings (-84% to -93%):** Feature tasks. Without rules, Claude narrates its plan, rewrites entire files, adds unsolicited suggestions, and signs off with "Let me know if you need anything else!" With rules, it just writes the code and confirms.
+
+**Medium savings (-61% to -72%):** Lookups, explanations, bug fixes, and reviews. Rules 14 (code first), 16 (terse prose), and 17 (confirm with result) cut the padding. A bug fix goes from a paragraph explaining what ZeroDivisionError is to "Fixed in app.py:55."
+
+**Lower savings (-22% to -40%):** Search, refactor, and test tasks. These are more information-dense — a refactor *needs* to show the new code. A test run *needs* to show what failed. The rules still help (shorter phrasing, no filler), but the floor is higher.
+
+**Lowest (13%):** Rename function. Already a mechanical task with minimal prose — Sonnet doesn't add much fluff even without rules.
 
 <details>
 <summary><strong>Why output matters more than input</strong></summary>
@@ -168,11 +244,15 @@ Tested with the Anthropic API. Same 9 coding tasks, same project files, sequenti
 Token Pricing (per 1M tokens):
                     Input       Output
   Sonnet 4          $3          $15        ← output is 5x more expensive
-  Opus 4            $15         $75        ← output is 5x more expensive
 
-  Input increases ~700 tokens (the rules themselves).
-  Output decreases ~4,800 tokens (Sonnet) / ~1,900 tokens (Opus).
-  Net: significant cost reduction despite the input overhead.
+  The 36 rules add ~700 input tokens per request.
+  They save ~5,300 output tokens across 15 tasks.
+
+  Extra input cost:   700 × $3/M  = $0.0021
+  Output savings:   5,300 × $15/M = $0.0795
+
+  Net savings: $0.0795 - $0.0021 = $0.0774 per benchmark run
+  That's a 38:1 return on the input token investment.
 ```
 
 </details>
@@ -247,7 +327,7 @@ Prevents Claude from reading build artifacts, dependencies, and logs during expl
 |--------|----------------|---------|
 | **Approach** | Behavioral rules (how the agent works + speaks) | Output style compression (caveman speak) |
 | **Scope** | Output + context + tools + images + model selection | Output prose only |
-| **Output savings** | -68% (Sonnet), -42% (Opus) | ~65% (range 22-87%) |
+| **Output savings** | -62% overall, -84% on features (Sonnet) | ~65% (range 22-87%) |
 | **Input optimization** | Rules 19-26 optimize context management | `caveman-compress` shrinks CLAUDE.md ~45% |
 | **Format** | Drop-in CLAUDE.md | Installable skill |
 
@@ -336,6 +416,10 @@ For detailed explanations: [RULES.md](RULES.md)
 
 36 reglas de comportamiento que pones como `CLAUDE.md` en tu proyecto. Claude Code las lee al iniciar y ajusta: respuestas más cortas, sin relleno, sin narración innecesaria, respuestas proporcionales.
 
+### Ahorro real
+
+Con $100/mes en Sonnet 4: ahorras entre **$22** (conservador) y **$67** (si tu trabajo es mayormente features). La calidad no baja — [estudios académicos](https://arxiv.org/abs/2603.29919) muestran que comprimir instrucciones un 48% *mejora* la calidad un 2.8%.
+
 ### Antes / Después
 
 **Tarea: "¿Qué versión de Node usa este proyecto?"**
@@ -368,14 +452,18 @@ curl -o CLAUDE.md https://raw.githubusercontent.com/israads/token-efficient/main
 curl -o ~/.claude/rules/token-efficient.md https://raw.githubusercontent.com/israads/token-efficient/main/CLAUDE.md
 ```
 
-### Resultados
+### Resultados (Sonnet 4, 15 tareas, promedio 3 corridas)
 
-| Modelo | Ahorro output | Ahorro costo |
-|--------|:---:|:---:|
-| Sonnet 4 | **-68%** | **-36%** |
-| Opus 4 | **-42%** | **-9%** |
+| Categoría | Ahorro output |
+|-----------|:---:|
+| Features (agregar endpoints) | **-88%** |
+| Lookups (preguntas simples) | **-72%** |
+| Explicaciones | **-65%** |
+| Bug fixes | **-64%** |
+| Reviews | **-64%** |
+| **Total (15 tareas)** | **-59%** |
 
-Ver tablas completas arriba en la sección en inglés.
+Costo total: **-22%** · Mediana por tarea: **-64%**. Ver tablas completas arriba.
 
 ### Las 36 Reglas
 

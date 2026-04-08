@@ -1,8 +1,9 @@
 """
-Token Efficient Benchmark — API-based measurement.
+Token Efficient Benchmark v2 — API-based measurement.
 
-Runs the same 10 tasks twice (without rules, with rules) via the Anthropic API
-and compares exact token usage from the API response.
+Runs 15 categorized tasks twice (without rules, with rules) via the Anthropic API.
+Measures exact token usage, calculates per-category savings, and generates
+a markdown results file.
 """
 
 import anthropic
@@ -10,11 +11,19 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 
 # --- Config ---
 API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 MODEL = os.environ.get("BENCHMARK_MODEL", "claude-sonnet-4-20250514")
 MAX_TOKENS = 4096
+RUNS = int(os.environ.get("BENCHMARK_RUNS", "1"))  # Multiple runs for averaging
+
+# Model pricing per 1M tokens
+PRICING = {
+    "claude-sonnet-4-20250514": {"input": 3, "output": 15, "name": "Sonnet 4"},
+    "claude-opus-4-20250514": {"input": 15, "output": 75, "name": "Opus 4"},
+}
 
 # --- Test project files (inline for reproducibility) ---
 FILES = {
@@ -205,18 +214,53 @@ def test_sanitize():
 '''
 }
 
-# --- The 10 tasks ---
+# --- 15 categorized tasks ---
 TASKS = [
-    "What version of Node does this project use?",
-    "Explain what app.py does",
-    "The function divide_numbers on line 42 of app.py crashes when b is zero. Fix it.",
-    "Find all TODO comments across the project",
-    "Add validation to POST /users — name can't be empty, email needs an @",
-    "How does the auth_required decorator in middleware.py work?",
-    "Refactor db.py to use connection pooling instead of opening a new connection every query",
-    "Look at screenshot.png and describe what you see",
-    "Run pytest and fix whatever fails",
-    "Add a GET /health endpoint that returns {\"status\": \"ok\"}",
+    # Category: Lookup (tests rules 11, 15 — proportional, plain text)
+    {"prompt": "What version of Node does this project use?",
+     "category": "lookup", "short": "Node version"},
+    {"prompt": "What Python packages does this project depend on?",
+     "category": "lookup", "short": "Python deps"},
+
+    # Category: Explain (tests rules 14, 16 — code first, terse prose)
+    {"prompt": "Explain what app.py does",
+     "category": "explain", "short": "Explain app.py"},
+    {"prompt": "How does the auth_required decorator in middleware.py work?",
+     "category": "explain", "short": "Explain auth decorator"},
+
+    # Category: Search (tests rules 18 — report only changes/findings)
+    {"prompt": "Find all TODO comments across the project",
+     "category": "search", "short": "Find TODOs"},
+    {"prompt": "List all functions defined in db.py with a one-line description of each",
+     "category": "search", "short": "List db.py functions"},
+
+    # Category: Bug fix (tests rules 3, 17 — edit over rewrite, confirm with result)
+    {"prompt": "The function divide_numbers on line 42 of app.py crashes when b is zero. Fix it.",
+     "category": "bugfix", "short": "Fix divide_numbers"},
+    {"prompt": "The sanitize_input function doesn't handle None input. Fix it.",
+     "category": "bugfix", "short": "Fix sanitize_input"},
+
+    # Category: Feature (tests rules 10, 13, 17 — act first, stay in scope, confirm)
+    {"prompt": 'Add a GET /health endpoint that returns {"status": "ok"}',
+     "category": "feature", "short": "Add /health"},
+    {"prompt": "Add validation to POST /users — name can't be empty, email needs an @",
+     "category": "feature", "short": "Add POST validation"},
+    {"prompt": "Add a DELETE /users/<id> endpoint that returns 204 on success",
+     "category": "feature", "short": "Add DELETE /users"},
+
+    # Category: Refactor (tests rules 3, 30 — edit over rewrite, show only changed)
+    {"prompt": "Refactor db.py to use connection pooling instead of opening a new connection every query",
+     "category": "refactor", "short": "Refactor db.py pooling"},
+    {"prompt": "Rename validate_email_format to is_valid_email everywhere in the project",
+     "category": "refactor", "short": "Rename function"},
+
+    # Category: Test/Debug (tests rules 5, 18, 31 — verify, report only failures, filter output)
+    {"prompt": "Run pytest and fix whatever fails",
+     "category": "test", "short": "Run tests + fix"},
+
+    # Category: Review (tests rules 12, 13 — no soft warnings, stay in scope)
+    {"prompt": "What are the top 3 security issues in this codebase? Be specific about file and line.",
+     "category": "review", "short": "Security review"},
 ]
 
 # --- Token efficient rules ---
@@ -272,6 +316,14 @@ RULES = """# Token Efficient Rules
 """
 
 
+def get_pricing(model: str) -> dict:
+    """Get pricing for the model, with fallback."""
+    for key, price in PRICING.items():
+        if key in model:
+            return price
+    return {"input": 3, "output": 15, "name": model}
+
+
 def build_system_prompt(with_rules: bool) -> str:
     """Build system prompt with project files as context."""
     parts = [
@@ -288,8 +340,43 @@ def build_system_prompt(with_rules: bool) -> str:
     return "\n".join(parts)
 
 
+def run_single_task(client, system_prompt: str, task: dict) -> dict:
+    """Run a single task and return metrics."""
+    try:
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            system=system_prompt,
+            messages=[{"role": "user", "content": task["prompt"]}],
+        )
+
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        output_text = response.content[0].text if response.content else ""
+
+        return {
+            "prompt": task["prompt"],
+            "short": task["short"],
+            "category": task["category"],
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "output_length": len(output_text),
+            "output_preview": output_text[:200] + "..." if len(output_text) > 200 else output_text,
+        }
+    except Exception as e:
+        print(f"    ERROR — {e}")
+        return {
+            "prompt": task["prompt"],
+            "short": task["short"],
+            "category": task["category"],
+            "error": str(e),
+            "input_tokens": 0,
+            "output_tokens": 0,
+        }
+
+
 def run_session(client, with_rules: bool) -> dict:
-    """Run all 10 tasks and collect token metrics."""
+    """Run all tasks and collect token metrics."""
     label = "WITH rules" if with_rules else "WITHOUT rules"
     system_prompt = build_system_prompt(with_rules)
 
@@ -300,84 +387,46 @@ def run_session(client, with_rules: bool) -> dict:
         "total_output": 0,
     }
 
-    # Each task is independent (single-turn) to keep it fair
     for i, task in enumerate(TASKS):
-        # Skip image task (no image in API mode)
-        if "screenshot" in task.lower():
-            print(f"  Task {i+1}: [SKIPPED — no image in API mode]")
-            results["tasks"].append({
-                "task": i + 1,
-                "prompt": task,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "output_length": 0,
-                "skipped": True,
-            })
-            continue
+        result = run_single_task(client, system_prompt, task)
+        results["tasks"].append(result)
+        results["total_input"] += result.get("input_tokens", 0)
+        results["total_output"] += result.get("output_tokens", 0)
 
-        try:
-            response = client.messages.create(
-                model=MODEL,
-                max_tokens=MAX_TOKENS,
-                system=system_prompt,
-                messages=[{"role": "user", "content": task}],
-            )
+        out = result.get("output_tokens", 0)
+        err = result.get("error", "")
+        status = f"output={out:,}" if not err else f"ERROR: {err[:50]}"
+        print(f"  {i+1:>2}. [{task['category']:>8}] {task['short']:<25} {status}")
 
-            input_tokens = response.usage.input_tokens
-            output_tokens = response.usage.output_tokens
-            output_text = response.content[0].text if response.content else ""
-
-            results["tasks"].append({
-                "task": i + 1,
-                "prompt": task,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "output_length": len(output_text),
-                "output_preview": output_text[:150] + "..." if len(output_text) > 150 else output_text,
-            })
-            results["total_input"] += input_tokens
-            results["total_output"] += output_tokens
-
-            print(f"  Task {i+1}: input={input_tokens:,} output={output_tokens:,} chars={len(output_text):,}")
-
-            # Small delay to avoid rate limits
-            time.sleep(0.5)
-
-        except Exception as e:
-            print(f"  Task {i+1}: ERROR — {e}")
-            results["tasks"].append({
-                "task": i + 1,
-                "prompt": task,
-                "error": str(e),
-                "input_tokens": 0,
-                "output_tokens": 0,
-            })
+        time.sleep(0.5)
 
     results["total_tokens"] = results["total_input"] + results["total_output"]
     return results
 
 
-def print_comparison(without: dict, with_rules: dict):
-    """Print side-by-side comparison."""
-    print("\n" + "=" * 70)
-    print("BENCHMARK RESULTS")
-    print("=" * 70)
+def print_comparison(without: dict, with_rules: dict, pricing: dict):
+    """Print side-by-side comparison with categories."""
+    print("\n" + "═" * 78)
+    print(f"  BENCHMARK RESULTS — {pricing['name']} ({MODEL})")
+    print("═" * 78)
 
     # Per-task comparison
-    print(f"\n{'Task':<6} {'Without Rules':>20} {'With Rules':>20} {'Saved':>12}")
-    print(f"{'':>6} {'(output tokens)':>20} {'(output tokens)':>20} {'':>12}")
-    print("-" * 60)
+    print(f"\n  {'#':<3} {'Category':<10} {'Task':<25} {'Without':>8} {'With':>8} {'Saved':>8}")
+    print("  " + "─" * 72)
 
+    categories = {}
     for i in range(len(TASKS)):
         t_without = without["tasks"][i]
         t_with = with_rules["tasks"][i]
-
-        if t_without.get("skipped"):
-            print(f"  {i+1:<4} {'SKIPPED':>20} {'SKIPPED':>20} {'—':>12}")
-            continue
+        cat = t_without["category"]
 
         out_a = t_without.get("output_tokens", 0)
         out_b = t_with.get("output_tokens", 0)
+
+        if cat not in categories:
+            categories[cat] = {"without": 0, "with": 0}
+        categories[cat]["without"] += out_a
+        categories[cat]["with"] += out_b
 
         if out_a > 0:
             pct = ((out_a - out_b) / out_a) * 100
@@ -385,29 +434,100 @@ def print_comparison(without: dict, with_rules: dict):
         else:
             saved = "—"
 
-        print(f"  {i+1:<4} {out_a:>20,} {out_b:>20,} {saved:>12}")
+        print(f"  {i+1:<3} {cat:<10} {t_without['short']:<25} {out_a:>8,} {out_b:>8,} {saved:>8}")
+
+    # Category summary
+    print("\n  " + "─" * 72)
+    print(f"  {'Category Summary':<38} {'Without':>8} {'With':>8} {'Saved':>8}")
+    print("  " + "─" * 72)
+
+    for cat, totals in sorted(categories.items()):
+        a, b = totals["without"], totals["with"]
+        pct = ((a - b) / a * 100) if a > 0 else 0
+        print(f"  {cat:<38} {a:>8,} {b:>8,} {pct:>+7.0f}%")
 
     # Totals
-    print("-" * 60)
-
-    for metric, key in [("Input tokens", "total_input"), ("Output tokens", "total_output"), ("Total tokens", "total_tokens")]:
+    print("\n  " + "─" * 72)
+    for metric, key in [("Output tokens", "total_output"), ("Input tokens", "total_input")]:
         a = without[key]
         b = with_rules[key]
+        pct = ((a - b) / a * 100) if a > 0 else 0
+        print(f"  TOTAL {metric:<31} {a:>8,} {b:>8,} {pct:>+7.0f}%")
+
+    # Cost
+    ip, op = pricing["input"], pricing["output"]
+    cost_a = (without["total_input"] * ip + without["total_output"] * op) / 1_000_000
+    cost_b = (with_rules["total_input"] * ip + with_rules["total_output"] * op) / 1_000_000
+    cost_pct = ((cost_a - cost_b) / cost_a * 100) if cost_a > 0 else 0
+    print(f"\n  Estimated cost (${ip}/M in, ${op}/M out)  ${cost_a:>7.4f}  ${cost_b:>7.4f} {cost_pct:>+7.0f}%")
+
+    # Stats
+    savings = []
+    for i in range(len(TASKS)):
+        a = without["tasks"][i].get("output_tokens", 0)
+        b = with_rules["tasks"][i].get("output_tokens", 0)
         if a > 0:
-            pct = ((a - b) / a) * 100
-            saved = f"{pct:+.0f}%"
-        else:
-            saved = "—"
-        print(f"  {'TOTAL ' + metric:<26} {a:>14,} {b:>14,} {saved:>12}")
+            savings.append((a - b) / a * 100)
 
-    # Cost estimate (Sonnet pricing: $3/M input, $15/M output)
-    cost_a = (without["total_input"] * 3 + without["total_output"] * 15) / 1_000_000
-    cost_b = (with_rules["total_input"] * 3 + with_rules["total_output"] * 15) / 1_000_000
-    if cost_a > 0:
-        cost_saved = ((cost_a - cost_b) / cost_a) * 100
-        print(f"\n  {'Estimated cost':<26} ${cost_a:>13.4f} ${cost_b:>13.4f} {cost_saved:+.0f}%")
+    if savings:
+        savings.sort()
+        median = savings[len(savings) // 2]
+        print(f"\n  Output savings: min={min(savings):+.0f}%  median={median:+.0f}%  max={max(savings):+.0f}%  mean={sum(savings)/len(savings):+.0f}%")
 
-    print("\n" + "=" * 70)
+    print("\n" + "═" * 78)
+
+
+def generate_markdown(without: dict, with_rules: dict, pricing: dict, model: str) -> str:
+    """Generate markdown results file."""
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    lines = [
+        f"# Benchmark Results — {pricing['name']}",
+        f"\nGenerated on {now} using `{model}`.\n",
+        f"| # | Category | Task | Without | With Rules | Saved |",
+        f"|---|----------|------|--------:|-----------:|------:|",
+    ]
+
+    for i in range(len(TASKS)):
+        t_w = without["tasks"][i]
+        t_r = with_rules["tasks"][i]
+        a = t_w.get("output_tokens", 0)
+        b = t_r.get("output_tokens", 0)
+        pct = f"{(a - b) / a * 100:.0f}%" if a > 0 else "—"
+        lines.append(f"| {i+1} | {t_w['category']} | {t_w['short']} | {a:,} | **{b:,}** | **{pct}** |")
+
+    ip, op = pricing["input"], pricing["output"]
+    cost_a = (without["total_input"] * ip + without["total_output"] * op) / 1_000_000
+    cost_b = (with_rules["total_input"] * ip + with_rules["total_output"] * op) / 1_000_000
+    out_pct = (without["total_output"] - with_rules["total_output"]) / without["total_output"] * 100
+    cost_pct = (cost_a - cost_b) / cost_a * 100
+
+    lines += [
+        f"\n| Metric | Without | With | Change |",
+        f"|--------|--------:|-----:|-------:|",
+        f"| **Output tokens** | **{without['total_output']:,}** | **{with_rules['total_output']:,}** | **{out_pct:+.0f}%** |",
+        f"| Input tokens | {without['total_input']:,} | {with_rules['total_input']:,} | {(with_rules['total_input'] - without['total_input']) / without['total_input'] * 100:+.0f}% |",
+        f"| **Estimated cost** | **${cost_a:.4f}** | **${cost_b:.4f}** | **{cost_pct:+.0f}%** |",
+    ]
+
+    # Category breakdown
+    categories = {}
+    for i in range(len(TASKS)):
+        cat = without["tasks"][i]["category"]
+        if cat not in categories:
+            categories[cat] = {"without": 0, "with": 0}
+        categories[cat]["without"] += without["tasks"][i].get("output_tokens", 0)
+        categories[cat]["with"] += with_rules["tasks"][i].get("output_tokens", 0)
+
+    lines += [
+        f"\n### By Category\n",
+        f"| Category | Without | With | Saved |",
+        f"|----------|--------:|-----:|------:|",
+    ]
+    for cat, t in sorted(categories.items()):
+        pct = (t["without"] - t["with"]) / t["without"] * 100 if t["without"] > 0 else 0
+        lines.append(f"| {cat} | {t['without']:,} | {t['with']:,} | {pct:.0f}% |")
+
+    return "\n".join(lines) + "\n"
 
 
 def main():
@@ -415,36 +535,81 @@ def main():
     if not api_key:
         print("Usage: ANTHROPIC_API_KEY=sk-... python3 run_benchmark.py")
         print("   or: python3 run_benchmark.py sk-ant-...")
+        print("\nOptions:")
+        print("  BENCHMARK_MODEL=claude-opus-4-20250514  (default: sonnet)")
+        print("  BENCHMARK_RUNS=3                        (default: 1, averages multiple runs)")
         sys.exit(1)
 
     client = anthropic.Anthropic(api_key=api_key)
+    pricing = get_pricing(MODEL)
+    model_short = pricing["name"].lower().replace(" ", "-")
 
-    print(f"Model: {MODEL}")
+    print(f"Model: {MODEL} ({pricing['name']})")
     print(f"Tasks: {len(TASKS)}")
+    print(f"Runs:  {RUNS}")
+    print(f"Price: ${pricing['input']}/M input, ${pricing['output']}/M output")
     print()
 
     # Session 1: WITHOUT rules
-    print("━" * 40)
+    print("━" * 50)
     print("SESSION 1: WITHOUT rules")
-    print("━" * 40)
+    print("━" * 50)
     without = run_session(client, with_rules=False)
 
     print()
 
     # Session 2: WITH rules
-    print("━" * 40)
+    print("━" * 50)
     print("SESSION 2: WITH rules")
-    print("━" * 40)
+    print("━" * 50)
     with_rules = run_session(client, with_rules=True)
 
-    # Comparison
-    print_comparison(without, with_rules)
+    # Additional runs for averaging
+    if RUNS > 1:
+        for run in range(2, RUNS + 1):
+            print(f"\n━━━ Run {run}/{RUNS} ━━━")
 
-    # Save raw data
-    output_path = os.path.join(os.path.dirname(__file__), "results.json")
-    with open(output_path, "w") as f:
-        json.dump({"without_rules": without, "with_rules": with_rules, "model": MODEL}, f, indent=2)
-    print(f"\nRaw data saved to {output_path}")
+            print("  WITHOUT rules...")
+            extra_without = run_session(client, with_rules=False)
+            for i in range(len(TASKS)):
+                for k in ("input_tokens", "output_tokens"):
+                    without["tasks"][i][k] = (without["tasks"][i].get(k, 0) + extra_without["tasks"][i].get(k, 0)) // 2
+            without["total_input"] = sum(t.get("input_tokens", 0) for t in without["tasks"])
+            without["total_output"] = sum(t.get("output_tokens", 0) for t in without["tasks"])
+            without["total_tokens"] = without["total_input"] + without["total_output"]
+
+            print("  WITH rules...")
+            extra_with = run_session(client, with_rules=True)
+            for i in range(len(TASKS)):
+                for k in ("input_tokens", "output_tokens"):
+                    with_rules["tasks"][i][k] = (with_rules["tasks"][i].get(k, 0) + extra_with["tasks"][i].get(k, 0)) // 2
+            with_rules["total_input"] = sum(t.get("input_tokens", 0) for t in with_rules["tasks"])
+            with_rules["total_output"] = sum(t.get("output_tokens", 0) for t in with_rules["tasks"])
+            with_rules["total_tokens"] = with_rules["total_input"] + with_rules["total_output"]
+
+    # Print comparison
+    print_comparison(without, with_rules, pricing)
+
+    # Save results
+    base = os.path.dirname(__file__)
+
+    json_path = os.path.join(base, f"results-{model_short}.json")
+    with open(json_path, "w") as f:
+        json.dump({
+            "without_rules": without,
+            "with_rules": with_rules,
+            "model": MODEL,
+            "model_name": pricing["name"],
+            "runs": RUNS,
+            "tasks": len(TASKS),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }, f, indent=2)
+    print(f"\nRaw data: {json_path}")
+
+    md_path = os.path.join(base, f"results-{model_short}.md")
+    with open(md_path, "w") as f:
+        f.write(generate_markdown(without, with_rules, pricing, MODEL))
+    print(f"Markdown: {md_path}")
 
 
 if __name__ == "__main__":
