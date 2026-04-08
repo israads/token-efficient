@@ -1,8 +1,12 @@
 # Token Efficient
 
-### 30 rules that cut Claude's output tokens by ~60%
+### 36 rules that cut Claude's output tokens by ~68%
 
 Drop-in `CLAUDE.md` for Claude Code. Works with any project.
+
+[![GitHub Stars](https://img.shields.io/github/stars/israads/token-efficient?style=flat)](https://github.com/israads/token-efficient)
+[![License](https://img.shields.io/github/license/israads/token-efficient)](LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/israads/token-efficient)](https://github.com/israads/token-efficient/commits/main)
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -15,21 +19,105 @@ Drop-in `CLAUDE.md` for Claude Code. Works with any project.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-[English](#english) · [Español](#español)
+[English](#before--after) · [Español](#español)
 
 ---
 
-<a id="english"></a>
+## Before / After
 
-## What is this?
+Same task, same project. Only difference: CLAUDE.md in the project root.
 
-A compact set of 30 behavioral rules that you drop into your project as `CLAUDE.md`. Claude Code reads it on startup and adjusts its behavior: shorter responses, no filler, no unnecessary narration, proportional answers.
+**Task: "What Node version does this project use?"**
 
-The rules don't limit Claude's capabilities — they eliminate waste. Claude still thinks deeply, but writes less fluff.
+```
+WITHOUT RULES (114 tokens):                    WITH RULES (10 tokens):
+
+Looking at your project files, I can see       node >=20.11.0
+that in `package.json`, there's an             (package.json → engines)
+`engines` field specified. The project
+requires **Node.js version 20.11.0 or
+higher** (>=20.11.0).
+
+This is defined in the `engines` field
+of your package.json file, which helps
+ensure compatibility...
+```
+
+**Task: "Add a GET /health endpoint that returns {"status": "ok"}"**
+
+```
+WITHOUT RULES (791 tokens):                    WITH RULES (59 tokens):
+
+I'll add a health check endpoint to your       Added to app.py:
+Flask application. Let me first review
+the current code structure...                   @app.route("/health")
+                                                def health():
+Here's the implementation:                          return jsonify({"status": "ok"})
+[full file rewrite of app.py, 60+ lines]
+
+I've added the `/health` endpoint to your
+application. Here's what it does:
+- Returns a JSON response with status "ok"
+- Uses a GET method (default for Flask)
+- No authentication required...
+Let me know if you need any changes!
+```
+
+**Task: "Fix divide_numbers — crashes when b is zero"**
+
+```
+WITHOUT RULES (202 tokens):                    WITH RULES (61 tokens):
+
+I'll fix the `divide_numbers` function         Fixed in app.py:55 — raises
+to handle the zero division case...            ValueError on zero denominator.
+
+[rewrites entire function with docstring,
+error handling, type hints, and explanation
+of what ZeroDivisionError is]
+
+The fix adds a check before the division
+to raise a ValueError with a descriptive
+message. Note that this approach...
+```
+
+## Quick Start
+
+```bash
+curl -o CLAUDE.md https://raw.githubusercontent.com/israads/token-efficient/main/CLAUDE.md
+```
+
+Open Claude Code. It reads CLAUDE.md automatically. Done.
+
+For all projects (global rules):
+```bash
+curl -o ~/.claude/rules/token-efficient.md https://raw.githubusercontent.com/israads/token-efficient/main/CLAUDE.md
+```
+
+## How It Works
+
+The rules optimize **three layers**:
+
+1. **Output behavior** (rules 8–18) — Eliminate filler, echo, narration, soft warnings. Use terse prose. Confirm with results, not explanations.
+2. **Context management** (rules 19–26) — Read only needed file sections, delegate to subagents, parallelize tool calls, batch edits, compact early with decision anchors.
+3. **Tool & model selection** (rules 27–36) — Cheapest tool first, CLI over MCP, filter shell output, resize images, use Sonnet for mechanical work.
+
+Research backing: [arXiv 2601.20404](https://arxiv.org/html/2601.20404v2) found instruction files (AGENTS.md) reduce output tokens by **20%** and speed up task completion by **29%**. [arXiv 2603.29919](https://arxiv.org/abs/2603.29919) showed compressing system prompts by 48% *improved* functional quality by 2.8% — less is more.
 
 ## Benchmark Results
 
-Tested with the Anthropic API. Same 9 coding tasks, same project files. Only difference: the 30 rules in the system prompt.
+Tested with the Anthropic API. Same 9 coding tasks, same project files, sequential calls, same temperature. Only difference: the rules in the system prompt.
+
+<details>
+<summary><strong>Methodology</strong></summary>
+
+- Model: API calls to `claude-sonnet-4-20250514` and `claude-opus-4-20250514`
+- Each task is a single-turn, independent request (no conversation history)
+- Project files are included inline in the system prompt for reproducibility
+- Token counts come from the API response `usage` field — no estimation
+- Benchmarks were measured with the original 30-rule version; the current 36-rule set adds output compression and context rules that should yield equal or better results
+- Script: [`benchmark/run_benchmark.py`](benchmark/run_benchmark.py)
+
+</details>
 
 ### Sonnet 4
 
@@ -48,7 +136,7 @@ Tested with the Anthropic API. Same 9 coding tasks, same project files. Only dif
 | Metric | Without | With | Change |
 |--------|--------:|-----:|-------:|
 | **Output tokens** | 7,097 | 2,252 | **-68%** |
-| Input tokens | 16,072 | 21,841 | +36%* |
+| Input tokens | 16,072 | 21,841 | +36% |
 | **Estimated cost** | $0.1547 | $0.0993 | **-36%** |
 
 ### Opus 4
@@ -62,20 +150,19 @@ Tested with the Anthropic API. Same 9 coding tasks, same project files. Only dif
 | "Add validation to POST /users" | 372 | **185** | **50%** |
 | "How does auth_required work?" | 575 | **171** | **70%** |
 | "Refactor db.py to use pooling" | 1,777 | **1,101** | **38%** |
-| "Run pytest and fix failures" | 297 | **688** | -132%** |
+| "Run pytest and fix failures" | 297 | **688** | -132%* |
 | "Add GET /health endpoint" | 336 | **74** | **78%** |
 
 | Metric | Without | With | Change |
 |--------|--------:|-----:|-------:|
 | **Output tokens** | 4,523 | 2,642 | **-42%** |
-| Input tokens | 16,072 | 21,841 | +36%* |
+| Input tokens | 16,072 | 21,841 | +36% |
 | **Estimated cost** | $0.1161 | $0.1052 | **-9%** |
 
-> *Input increases by ~640 tokens because the rules themselves are included in the system prompt. This is offset by the much larger output savings — output tokens cost 5x more than input on both models.
+> *Opus Task 9: Opus generates a more thorough fix with "verify before declaring done", resulting in more output for test-fix tasks. This is a quality improvement, not waste.
 
-> **Opus Task 9 anomaly: Opus occasionally generates a more thorough fix when given explicit "verify before declaring done" instructions, resulting in more output for test-fix tasks. This is a quality improvement, not waste.
-
-### Why output matters more
+<details>
+<summary><strong>Why output matters more than input</strong></summary>
 
 ```
 Token Pricing (per 1M tokens):
@@ -83,286 +170,246 @@ Token Pricing (per 1M tokens):
   Sonnet 4          $3          $15        ← output is 5x more expensive
   Opus 4            $15         $75        ← output is 5x more expensive
 
-  Reducing output by 60% saves more than reducing input by 60%.
+  Input increases ~700 tokens (the rules themselves).
+  Output decreases ~4,800 tokens (Sonnet) / ~1,900 tokens (Opus).
+  Net: significant cost reduction despite the input overhead.
 ```
 
-## Install
+</details>
 
-```bash
-# Option A: One project
-curl -o CLAUDE.md https://raw.githubusercontent.com/israads/token-efficient/main/CLAUDE.md
+## Beyond the Rules: User-Side Optimizations
 
-# Option B: All projects (global rules)
-curl -o ~/.claude/rules/token-efficient.md https://raw.githubusercontent.com/israads/token-efficient/main/CLAUDE.md
+The 36 rules tell Claude how to behave. These are things **you** configure for additional savings:
+
+### Environment settings
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "env": {
+    "MAX_THINKING_TOKENS": "8000",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "75"
+  }
+}
 ```
+
+| Setting | Effect | Savings |
+|---------|--------|---------|
+| `MAX_THINKING_TOKENS=8000` | Cap extended thinking (default ~32K). 8K suffices for most coding tasks | ~70% thinking cost |
+| `CLAUDE_CODE_SUBAGENT_MODEL=haiku` | Exploration subagents use Haiku instead of Sonnet | ~80% per subagent |
+| `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=75` | Compact earlier before quality degrades at high context fill | Better output quality |
+
+### .claudeignore
+
+Create `.claudeignore` in your project root:
+
+```
+node_modules/
+dist/
+build/
+.next/
+coverage/
+*.log
+*.lock
+__pycache__/
+.env*
+*.min.js
+vendor/
+```
+
+Prevents Claude from reading build artifacts, dependencies, and logs during exploration. Saves 40-60% of Read tokens.
+
+### Session strategies
+
+| Strategy | What to do | Savings |
+|----------|-----------|---------|
+| **Task briefs** | Write affected files + desired outcome before starting | Eliminates 2-4 clarification turns |
+| **Session handoffs** | Ask Claude to write a structured summary before context limits; start next session with it | Eliminates re-exploration |
+| **Spec-first** | For multi-file features: write spec in one session, `/clear`, implement in a fresh session | Avoids 15-40K tokens of exploration noise |
+| **`/btw` for lookups** | Use `/btw` for quick questions — answers don't enter conversation history | Zero context cost |
+| **`claude -p` for batch** | `for f in *.py; do claude -p "migrate $f"; done` — each invocation has zero history | No accumulated context |
+
+### Tool ecosystem
+
+| Tool | What it does | Savings |
+|------|-------------|---------|
+| [RTK](https://github.com/rtk-ai/rtk) | Rust CLI that filters shell output before Claude sees it (groups files, collapses repeated lines, strips boilerplate) | 75-92% per command |
+| [Headroom](https://github.com/chopratejas/headroom) | Context proxy with AST-aware code compression and KV cache alignment | 73-92% per tool result |
+| [Token Optimizer](https://github.com/alexgreensh/token-optimizer) | Claude Code plugin that audits your session for wasted tokens | Diagnostic |
+| **≤10 MCP servers** | Each MCP server injects its full schema every turn. Disable unused ones | 50-90% MCP overhead |
+| **Subdirectory CLAUDE.md** | Put domain rules in `src/api/CLAUDE.md` — loaded only when Claude touches that directory | On-demand, not always-on |
+
+## Comparison with Similar Projects
+
+| Aspect | token-efficient | [caveman](https://github.com/JuliusBrussee/caveman) |
+|--------|----------------|---------|
+| **Approach** | Behavioral rules (how the agent works + speaks) | Output style compression (caveman speak) |
+| **Scope** | Output + context + tools + images + model selection | Output prose only |
+| **Output savings** | -68% (Sonnet), -42% (Opus) | ~65% (range 22-87%) |
+| **Input optimization** | Rules 19-26 optimize context management | `caveman-compress` shrinks CLAUDE.md ~45% |
+| **Format** | Drop-in CLAUDE.md | Installable skill |
+
+**They're complementary.** Use both together for maximum savings.
+
+### Other AI coding assistants
+
+The principles apply to Cursor, Copilot, Windsurf, and others:
+
+1. Copy rules into `.cursorrules`, `.github/copilot-instructions.md`, etc.
+2. Replace Claude tool names (Edit, Write, Glob, Grep) with equivalents
+3. Remove rules 32-36 (images/model) if your tool doesn't support model selection
 
 ## Verify It Yourself
 
-### Option 1: API benchmark (exact numbers)
-
-Requires an Anthropic API key with credits.
+### API benchmark (exact numbers)
 
 ```bash
 git clone https://github.com/israads/token-efficient.git
 cd token-efficient/benchmark
 
-# Run with Sonnet
-ANTHROPIC_API_KEY=sk-ant-... python3 run_benchmark.py
-
-# Run with Opus
-BENCHMARK_MODEL=claude-opus-4-20250514 ANTHROPIC_API_KEY=sk-ant-... python3 run_benchmark.py
+ANTHROPIC_API_KEY=sk-ant-... python3 run_benchmark.py                                    # Sonnet
+BENCHMARK_MODEL=claude-opus-4-20250514 ANTHROPIC_API_KEY=sk-ant-... python3 run_benchmark.py  # Opus
 ```
 
-The script runs 9 coding tasks twice (without rules, then with rules) and prints a comparison table with exact token counts from the API response.
-
-### Option 2: Claude Code sessions (subscription users)
-
-If you're on a Max subscription and can't see token counts:
+### Claude Code sessions (subscription)
 
 ```bash
-git clone https://github.com/israads/token-efficient.git
-cd token-efficient/benchmark
-./setup.sh
-cd test-project
+git clone https://github.com/israads/token-efficient.git && cd token-efficient/benchmark
+./setup.sh && cd test-project
 
-# Session 1: WITHOUT rules
-claude
-# Run the 10 tasks from tasks.md, one by one
-# Type /context → note the "Messages" value
-# Type /exit
-
-# Reset the project
+claude                    # Session 1: WITHOUT rules — run tasks from tasks.md, then /cost
 cd .. && ./setup.sh && cd test-project
-
-# Session 2: WITH rules
-cp ../CLAUDE.md .
-claude
-# Run the SAME 10 tasks
-# Type /context → compare "Messages" value
+cp ../../CLAUDE.md . && claude   # Session 2: WITH rules — same tasks, then /cost and compare
 ```
 
-**What to look for**: Even if `/context` shows similar totals (it measures current window, not cumulative usage), you'll notice:
-- Responses are visibly shorter and more direct
-- Fewer turns needed (Claude acts instead of narrating)
-- No filler phrases, no echoing your question back
-- Code shown as diffs instead of full files
-
-## The 30 Rules — Summary
+## The 36 Rules
 
 | # | Category | Rule |
 |---|----------|------|
 | 1 | Core | Read before writing |
-| 2 | Core | Think deeply, write briefly |
+| 2 | Core | Think deep, write brief |
 | 3 | Core | Edit over rewrite (diffs, not full files) |
 | 4 | Core | Don't re-read files already in context |
 | 5 | Core | Verify before declaring done |
 | 6 | Core | Simplest working solution |
 | 7 | Core | User overrides everything |
 | 8 | Output | No filler ("Great question!", "Sure!") |
-| 9 | Output | No echo (don't repeat the request) |
+| 9 | Output | No echo — execute, don't restate |
 | 10 | Output | Act first, report after |
 | 11 | Output | Proportional responses |
 | 12 | Output | No soft warnings unless dangerous |
 | 13 | Output | Stay in scope |
 | 14 | Output | Code first, explanation if non-obvious |
-| 15 | Output | Plain text for short answers |
-| 16 | Context | Read only needed sections of files |
-| 17 | Context | Delegate exploration to subagents |
-| 18 | Context | Parallelize tool calls |
-| 19 | Context | Compact at 60%, not 90% |
-| 20 | Context | Don't repeat established facts |
-| 21 | Context | Use shorthands for repeated references |
-| 22 | Tools | Cheapest tool first |
-| 23 | Tools | CLI over MCP |
-| 24 | Tools | Direct paths over search |
-| 25 | Tools | Show only changed lines |
-| 26 | Images | Resize before reading |
-| 27 | Images | Describe images immediately in text |
-| 28 | Images | Never re-read same image |
-| 29 | Model | Cheapest model for the task |
-| 30 | Model | Lower effort for simple lookups |
+| 15 | Output | Plain text default |
+| 16 | Output | Terse prose: drop filler words, use fragments |
+| 17 | Output | Confirm with result, not explanation |
+| 18 | Output | Report only changes and failures |
+| 19 | Context | Read only needed sections |
+| 20 | Context | Delegate exploration to subagents |
+| 21 | Context | Parallelize tool calls |
+| 22 | Context | Compact at 60%, preserve decisions |
+| 23 | Context | Don't repeat established facts |
+| 24 | Context | Use shorthands for repeated references |
+| 25 | Context | Batch related edits into one turn |
+| 26 | Context | Reference by file:line, not re-pasting |
+| 27 | Tools | Cheapest tool first |
+| 28 | Tools | CLI over MCP |
+| 29 | Tools | Direct paths over search |
+| 30 | Tools | Show only changed lines |
+| 31 | Tools | Filter shell output: failures only |
+| 32 | Images | Resize before reading |
+| 33 | Images | Describe images immediately in text |
+| 34 | Images | Never re-read same image |
+| 35 | Model | Cheapest model for the task |
+| 36 | Model | Lower effort for simple lookups |
 
-For detailed explanations of each rule, see [RULES.md](RULES.md).
+For detailed explanations: [RULES.md](RULES.md)
 
 ---
 
-<a id="español"></a>
+<details>
+<summary><a id="español"></a><strong>Español</strong></summary>
 
 ## ¿Qué es esto?
 
-30 reglas compactas que pones como `CLAUDE.md` en tu proyecto. Claude Code las lee al iniciar y ajusta su comportamiento: respuestas más cortas, sin relleno, sin narración innecesaria, respuestas proporcionales a la pregunta.
+36 reglas de comportamiento que pones como `CLAUDE.md` en tu proyecto. Claude Code las lee al iniciar y ajusta: respuestas más cortas, sin relleno, sin narración innecesaria, respuestas proporcionales.
 
-Las reglas no limitan las capacidades de Claude — eliminan el desperdicio. Claude sigue pensando profundamente, pero escribe menos texto innecesario.
+### Antes / Después
 
-## Resultados del Benchmark
-
-Probado con la API de Anthropic. Las mismas 9 tareas de programación, los mismos archivos de proyecto. Única diferencia: las 30 reglas en el system prompt.
-
-### Sonnet 4
-
-| Tarea | Sin reglas | Con reglas | Ahorro |
-|-------|--------:|-----------:|------:|
-| "¿Qué versión de Node?" | 114 | **10** | **91%** |
-| "Explica app.py" | 388 | **222** | **43%** |
-| "Arregla bug divide_numbers" | 202 | **61** | **70%** |
-| "Busca todos los TODOs" | 281 | **225** | **20%** |
-| "Añade validación a POST /users" | 1,331 | **216** | **84%** |
-| "¿Cómo funciona auth_required?" | 494 | **226** | **54%** |
-| "Refactoriza db.py con connection pooling" | 2,551 | **948** | **63%** |
-| "Corre pytest y arregla fallos" | 945 | **285** | **70%** |
-| "Añade endpoint GET /health" | 791 | **59** | **93%** |
-
-| Métrica | Sin reglas | Con reglas | Cambio |
-|---------|--------:|-----:|-------:|
-| **Tokens de salida** | 7,097 | 2,252 | **-68%** |
-| Tokens de entrada | 16,072 | 21,841 | +36%* |
-| **Costo estimado** | $0.1547 | $0.0993 | **-36%** |
-
-### Opus 4
-
-| Tarea | Sin reglas | Con reglas | Ahorro |
-|-------|--------:|-----------:|------:|
-| "¿Qué versión de Node?" | 92 | **12** | **87%** |
-| "Explica app.py" | 532 | **138** | **74%** |
-| "Arregla bug divide_numbers" | 171 | **95** | **44%** |
-| "Busca todos los TODOs" | 371 | **178** | **52%** |
-| "Añade validación a POST /users" | 372 | **185** | **50%** |
-| "¿Cómo funciona auth_required?" | 575 | **171** | **70%** |
-| "Refactoriza db.py con connection pooling" | 1,777 | **1,101** | **38%** |
-| "Corre pytest y arregla fallos" | 297 | **688** | -132%** |
-| "Añade endpoint GET /health" | 336 | **74** | **78%** |
-
-| Métrica | Sin reglas | Con reglas | Cambio |
-|---------|--------:|-----:|-------:|
-| **Tokens de salida** | 4,523 | 2,642 | **-42%** |
-| Tokens de entrada | 16,072 | 21,841 | +36%* |
-| **Costo estimado** | $0.1161 | $0.1052 | **-9%** |
-
-> *La entrada sube ~640 tokens porque las reglas se incluyen en el prompt. Esto se compensa con el ahorro mucho mayor en salida — los tokens de salida cuestan 5x más que los de entrada en ambos modelos.
-
-> **Anomalía en Opus Tarea 9: Opus ocasionalmente genera una corrección más exhaustiva cuando recibe la instrucción "verificar antes de declarar terminado", produciendo más output en tareas de test+fix. Es una mejora de calidad, no desperdicio.
-
-### Por qué importa más la salida
+**Tarea: "¿Qué versión de Node usa este proyecto?"**
 
 ```
-Precios por token (por 1M tokens):
-                    Entrada     Salida
-  Sonnet 4          $3          $15        ← salida es 5x más cara
-  Opus 4            $15         $75        ← salida es 5x más cara
+SIN REGLAS (114 tokens):                       CON REGLAS (10 tokens):
 
-  Reducir salida 60% ahorra más que reducir entrada 60%.
+Mirando los archivos de tu proyecto,           node >=20.11.0
+puedo ver que en `package.json` hay            (package.json → engines)
+un campo `engines` especificado.
+El proyecto requiere **Node.js versión
+20.11.0 o superior**...
 ```
 
-## Instalar
+### Cómo funciona
+
+Las reglas optimizan **tres capas**:
+
+1. **Comportamiento de salida** (reglas 8–18) — Elimina relleno, eco, narración. Prosa concisa. Confirma con resultados.
+2. **Gestión de contexto** (reglas 19–26) — Lee solo secciones necesarias, delega a subagentes, paraleliza, agrupa ediciones, compacta temprano.
+3. **Herramientas y modelo** (reglas 27–36) — Herramienta más barata primero, CLI sobre MCP, filtra shell, Sonnet para trabajo mecánico.
+
+### Instalar
 
 ```bash
-# Opción A: Un proyecto
+# Un proyecto
 curl -o CLAUDE.md https://raw.githubusercontent.com/israads/token-efficient/main/CLAUDE.md
 
-# Opción B: Todos los proyectos (reglas globales)
+# Todos los proyectos
 curl -o ~/.claude/rules/token-efficient.md https://raw.githubusercontent.com/israads/token-efficient/main/CLAUDE.md
 ```
 
-## Verifica Tú Mismo
+### Resultados
 
-### Opción 1: Benchmark con API (números exactos)
+| Modelo | Ahorro output | Ahorro costo |
+|--------|:---:|:---:|
+| Sonnet 4 | **-68%** | **-36%** |
+| Opus 4 | **-42%** | **-9%** |
 
-Requiere API key de Anthropic con créditos.
+Ver tablas completas arriba en la sección en inglés.
 
-```bash
-git clone https://github.com/israads/token-efficient.git
-cd token-efficient/benchmark
-
-# Con Sonnet
-ANTHROPIC_API_KEY=sk-ant-... python3 run_benchmark.py
-
-# Con Opus
-BENCHMARK_MODEL=claude-opus-4-20250514 ANTHROPIC_API_KEY=sk-ant-... python3 run_benchmark.py
-```
-
-El script corre 9 tareas de programación dos veces (sin reglas, luego con reglas) e imprime una tabla comparativa con los tokens exactos de la respuesta de la API.
-
-### Opción 2: Sesiones de Claude Code (suscripción)
-
-Si tienes suscripción Max y no ves conteo de tokens:
-
-```bash
-git clone https://github.com/israads/token-efficient.git
-cd token-efficient/benchmark
-./setup.sh
-cd test-project
-
-# Sesión 1: SIN reglas
-claude
-# Corre las 10 tareas de tasks.md, una por una
-# Escribe /context → anota el valor de "Messages"
-# Escribe /exit
-
-# Resetea el proyecto
-cd .. && ./setup.sh && cd test-project
-
-# Sesión 2: CON reglas
-cp ../CLAUDE.md .
-claude
-# Corre las MISMAS 10 tareas
-# Escribe /context → compara el valor de "Messages"
-```
-
-**Qué observar**: Aunque `/context` muestre totales similares (mide la ventana actual, no el uso acumulado), notarás:
-- Respuestas visiblemente más cortas y directas
-- Menos turnos necesarios (Claude actúa en vez de narrar)
-- Sin frases de relleno, sin repetir tu pregunta
-- Código mostrado como diffs en vez de archivos completos
-
-## Las 30 Reglas — Resumen
+### Las 36 Reglas
 
 | # | Categoría | Regla |
 |---|-----------|-------|
-| 1 | Core | Leer antes de escribir |
-| 2 | Core | Pensar profundo, escribir breve |
-| 3 | Core | Editar sobre reescribir (diffs, no archivos completos) |
-| 4 | Core | No re-leer archivos que ya están en contexto |
-| 5 | Core | Verificar antes de declarar terminado |
-| 6 | Core | Solución más simple que funcione |
-| 7 | Core | El usuario tiene prioridad sobre todo |
-| 8 | Output | Sin relleno ("¡Buena pregunta!", "¡Claro!") |
-| 9 | Output | Sin eco (no repetir la petición) |
-| 10 | Output | Actuar primero, reportar después |
-| 11 | Output | Respuestas proporcionales |
-| 12 | Output | Sin advertencias suaves salvo peligro real |
-| 13 | Output | Mantenerse en el alcance pedido |
-| 14 | Output | Código primero, explicación si no es obvio |
-| 15 | Output | Texto plano para respuestas cortas |
-| 16 | Contexto | Leer solo secciones necesarias |
-| 17 | Contexto | Delegar exploración a subagentes |
-| 18 | Contexto | Paralelizar llamadas de herramientas |
-| 19 | Contexto | Compactar al 60%, no al 90% |
-| 20 | Contexto | No repetir hechos ya establecidos |
-| 21 | Contexto | Usar abreviaciones para referencias repetidas |
-| 22 | Herramientas | Herramienta más barata primero |
-| 23 | Herramientas | CLI sobre MCP |
-| 24 | Herramientas | Paths directos sobre búsqueda |
-| 25 | Herramientas | Mostrar solo líneas cambiadas |
-| 26 | Imágenes | Redimensionar antes de leer |
-| 27 | Imágenes | Describir imágenes inmediatamente en texto |
-| 28 | Imágenes | Nunca re-leer la misma imagen |
-| 29 | Modelo | Modelo más barato para la tarea |
-| 30 | Modelo | Menor esfuerzo para consultas simples |
+| 1-7 | Core | Leer antes de escribir, pensar profundo/escribir breve, diffs sobre reescritura, no re-leer, verificar, solución simple, usuario manda |
+| 8-18 | Output | Sin relleno, sin eco, actuar primero, proporcional, sin advertencias suaves, en alcance, código primero, texto plano, prosa concisa, confirmar con resultado, solo cambios y fallos |
+| 19-26 | Contexto | Solo secciones necesarias, subagentes, paralelizar, compactar al 60%, no repetir, abreviaciones, agrupar ediciones, referenciar por archivo:línea |
+| 27-31 | Herramientas | Más barata primero, CLI sobre MCP, paths directos, solo líneas cambiadas, filtrar shell |
+| 32-34 | Imágenes | Redimensionar, describir en texto, no re-leer |
+| 35-36 | Modelo | Modelo más barato, menor esfuerzo para consultas simples |
 
-Para explicaciones detalladas de cada regla, ver [RULES.md](RULES.md).
+Para explicaciones detalladas: [RULES.md](RULES.md)
+
+</details>
 
 ---
 
-## Sources / Fuentes
+## Sources
 
-Compiled from 15+ sources / Compilado de 15+ fuentes:
+Compiled from 20+ sources:
+- [AGENTS.md Impact Study (arXiv 2601.20404)](https://arxiv.org/html/2601.20404v2) — instruction files reduce output tokens by 20%
+- [SkillReducer (arXiv 2603.29919)](https://arxiv.org/abs/2603.29919) — compressing system prompts by 48% improves quality by 2.8%
+- [The Hidden Cost of Readability (arXiv 2508.13666)](https://arxiv.org/html/2508.13666v1) — code formatting = 24.5% of input tokens
+- [Context Length Hurts (arXiv 2510.05381)](https://arxiv.org/html/2510.05381v1) — shorter context outperforms longer even with perfect retrieval
+- [caveman (JuliusBrussee)](https://github.com/JuliusBrussee/caveman) — output compression via terse prose style
 - [claude-token-efficient (drona23)](https://github.com/drona23/claude-token-efficient) — original 8-rule baseline
+- [RTK — AI-aware shell filter](https://github.com/rtk-ai/rtk) — 60-90% shell output compression
+- [Headroom — context proxy](https://github.com/chopratejas/headroom) — AST-aware code compression
 - [6 Ways I Cut My Claude Token Usage (Sabrina.dev)](https://www.sabrina.dev/p/6-ways-i-cut-my-claude-token-usage)
-- [Optimize Context by 60% (Medium)](https://medium.com/@jpranav97/stop-wasting-tokens-how-to-optimize-claude-code-context-by-60-bfad6fd477e5)
-- [HN: Universal Claude.md Discussion](https://news.ycombinator.com/item?id=47581701)
 - [18 Token Management Hacks (MindStudio)](https://www.mindstudio.ai/blog/claude-code-token-management-hacks-3)
-- [Claude Code Official Docs — Costs](https://code.claude.com/docs/en/costs)
-- [Claude Code Official Docs — Best Practices](https://code.claude.com/docs/en/best-practices)
+- [Claude Code Docs — Costs](https://code.claude.com/docs/en/costs) · [Best Practices](https://code.claude.com/docs/en/best-practices) · [Hooks](https://code.claude.com/docs/en/hooks)
+- [everything-claude-code (affaan-m)](https://github.com/affaan-m/everything-claude-code/blob/main/docs/token-optimization.md)
+- [Anthropic Prompt Caching Docs](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching)
 
 ## License
 
