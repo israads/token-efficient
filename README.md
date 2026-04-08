@@ -128,15 +128,47 @@ What gets cut: "Great question!", "Let me explain what I'm about to do...", full
 
 ## Quick Start
 
+**Claude Code** — drop in project root:
 ```bash
 curl -o CLAUDE.md https://raw.githubusercontent.com/israads/token-efficient/main/CLAUDE.md
 ```
 
 Open Claude Code. It reads CLAUDE.md automatically. Done.
 
-For all projects (global rules):
+Global (all projects):
 ```bash
 curl -o ~/.claude/rules/token-efficient.md https://raw.githubusercontent.com/israads/token-efficient/main/CLAUDE.md
+```
+
+**Cursor** — persistent rules via `.cursor/rules/`:
+```bash
+mkdir -p .cursor/rules && curl -o .cursor/rules/token-efficient.mdc \
+  https://raw.githubusercontent.com/israads/token-efficient/main/.cursor/rules/token-efficient.mdc
+```
+
+**GitHub Copilot** — workspace instructions:
+```bash
+mkdir -p .github && curl -o .github/copilot-instructions.md \
+  https://raw.githubusercontent.com/israads/token-efficient/main/.github/copilot-instructions.md
+```
+
+**Codex / Gemini CLI / any agent with AGENTS.md support:**
+```bash
+curl -o AGENTS.md https://raw.githubusercontent.com/israads/token-efficient/main/AGENTS.md
+```
+
+**Windsurf / Cline / others** — copy the generic rules:
+```bash
+# Windsurf
+curl -o .windsurfrules https://raw.githubusercontent.com/israads/token-efficient/main/AGENTS.md
+
+# Cline
+curl -o .clinerules https://raw.githubusercontent.com/israads/token-efficient/main/AGENTS.md
+```
+
+**npx skills** (40+ agents via [skills CLI](https://github.com/anthropics/claude-code/blob/main/skills/README.md)):
+```bash
+npx skills add israads/token-efficient
 ```
 
 ## How It Works
@@ -329,17 +361,24 @@ Prevents Claude from reading build artifacts, dependencies, and logs during expl
 | **Scope** | Output + context + tools + images + model selection | Output prose only |
 | **Output savings** | -62% overall, -84% on features (Sonnet) | ~65% (range 22-87%) |
 | **Input optimization** | Rules 19-26 optimize context management | `caveman-compress` shrinks CLAUDE.md ~45% |
-| **Format** | Drop-in CLAUDE.md | Installable skill |
+| **Format** | Drop-in for 6+ agents (CLAUDE.md, Cursor, Copilot, Codex, Windsurf, Cline) | Installable skill |
 
 **They're complementary.** Use both together for maximum savings.
 
 ### Other AI coding assistants
 
-The principles apply to Cursor, Copilot, Windsurf, and others:
+Rules 1–26 are universal. Rules 27–31 use Claude tool names — adapt for your agent (`Edit` → inline edit, `Glob/Grep` → search, `Agent` → background agent). Rules 35–36 apply if your tool supports model selection.
 
-1. Copy rules into `.cursorrules`, `.github/copilot-instructions.md`, etc.
-2. Replace Claude tool names (Edit, Write, Glob, Grep) with equivalents
-3. Remove rules 32-36 (images/model) if your tool doesn't support model selection
+| Agent | File | Install |
+|-------|------|---------|
+| Claude Code | `CLAUDE.md` | `curl -o CLAUDE.md ...` |
+| Cursor | `.cursor/rules/token-efficient.mdc` | `curl -o .cursor/rules/token-efficient.mdc ...` |
+| GitHub Copilot | `.github/copilot-instructions.md` | `curl -o .github/copilot-instructions.md ...` |
+| Codex / Gemini CLI | `AGENTS.md` | `curl -o AGENTS.md ...` |
+| Windsurf | `.windsurfrules` | `curl -o .windsurfrules ...` (use AGENTS.md content) |
+| Cline | `.clinerules` | `curl -o .clinerules ...` (use AGENTS.md content) |
+
+All raw files: `https://raw.githubusercontent.com/israads/token-efficient/main/{file}`
 
 ## Verify It Yourself
 
